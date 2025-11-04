@@ -1,0 +1,5 @@
+{
+  "name": "AI Social Media Content Generator",
+  "description": "Generate tailored posts for LinkedIn, Twitter/X, and Instagram from a single idea. This app creates platform-specific text and generates unique images with optimal aspect ratios for each network simultaneously.",
+  "requestFramePermissions": []
+}
