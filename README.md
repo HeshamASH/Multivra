@@ -61,14 +61,14 @@ This application's core logic is orchestrated through a workflow of specialized 
            v
 [App Orchestrator]
     |
-    +-----> [Text Generation Task] ------------------------------------------------------------------------------------------------> [Post Text]
+    +-----> [Text Generation Task]
     |           |
     |           +-- (If 'Use Latest Info' is ON) --> [Agent 1A: Grounded Writer (gemini-2.5-flash)] -> Uses [Google Search Tool] -> Generates JSON
     |           |
     |           +-- (If 'Use Latest Info' is OFF) -> [Agent 1B: Creative Writer (gemini-2.5-pro)] ----------------------------------> Generates JSON
     |
     |
-    +-----> [Image Generation Task (for each platform: LinkedIn, Twitter/X, Instagram)] --------------------------------------------> [Post Image]
+    +-----> [Image Generation Task (for each platform: LinkedIn, Twitter/X, Instagram)]
                 |
                 v
                 [Agent 2: Image Generator (imagen-4.0-generate-001)] -> Creates [Base Image]
