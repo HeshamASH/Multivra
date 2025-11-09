@@ -1,5 +1,6 @@
 
 
+
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { GeneratedDesign, RoomType, DecorStyle, LightingType, EditPayload } from '../types';
 
@@ -12,9 +13,25 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 // --- Helper Functions ---
 
 const fileToGenerativePart = async (file: File) => {
-    const base64EncodedDataPromise = new Promise<string>((resolve) => {
+    const base64EncodedDataPromise = new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
-        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = reject;
+        reader.onload = () => {
+            const result = reader.result as string;
+            // The result from readAsDataURL is a string like "data:image/png;base64,iVBORw0KGgo..."
+            // We need to handle cases where the result is null or not a string.
+            if (typeof result !== 'string') {
+                return reject(new Error('File could not be read as a string.'));
+            }
+
+            const parts = result.split(',');
+            // A valid data URL will have two parts.
+            if (parts.length !== 2) {
+                return reject(new Error('Invalid data URL format from file.'));
+            }
+            
+            resolve(parts[1]);
+        };
         reader.readAsDataURL(file);
     });
     return {
@@ -49,27 +66,27 @@ Return ONLY the design rationale.
 `;
 
 const analyzeReferenceStylePrompt = `
-You are a world-class interior design consultant and prompt engineer. Your task is to analyze a set of reference images of rooms and distill their decor style into a concise, actionable description for an image generation AI.
+You are a world-class interior design consultant and prompt engineer. Your task is to analyze a set of reference images of rooms and create a highly detailed and prescriptive style guide. This guide will be used by an image generation AI to replicate the style with maximum fidelity. Your analysis must be meticulous.
 
-**Analysis Checklist:**
-*   **Color Palette:** Is it neutral, earthy, monochromatic, bold, pastel?
-*   **Furniture Style:** Is it mid-century modern, minimalist, rustic, traditional, industrial?
-*   **Materials & Textures:** Are there natural woods, exposed brick, metals, plush fabrics, leather, concrete?
-*   **Lighting:** Is the lighting warm and soft, bright and airy, dramatic, from statement fixtures?
-*   **Overall Vibe:** Is it cozy, sleek, eclectic, sophisticated, relaxing, energetic?
+**Analysis Checklist (be specific and detailed):**
+*   **Dominant Color Palette:** List the primary, secondary, and accent colors. Use specific color names (e.g., "sage green," "burnt orange," "charcoal gray") not just "neutral".
+*   **Furniture Style & Form:** Describe the shapes and designs. Are they "low-profile with clean lines," "ornate and traditional," "chunky and rustic"? Name specific styles if identifiable (e.g., Mid-Century Modern, Art Deco).
+*   **Key Materials & Textures:** Be exhaustive. List everything you see: "natural light oak wood," "blackened steel," "bouclé fabric," "tumbled leather," "honed marble," "exposed concrete."
+*   **Lighting Characteristics:** Describe the quality and source of light. Is it "diffuse, indirect natural light," "warm, low-level ambient light from multiple lamps," "dramatic, high-contrast spotlights"?
+*   **Decorative Elements & Vibe:** What are the key accessories? "minimalist decor," "abundant potted plants (ferns, monstera)," "eclectic mix of vintage art prints," "geometric patterned rugs." Describe the overall mood: "serene and calming," "energetic and vibrant," "sophisticated and moody."
 
 **Output Instructions:**
-Provide a short, comma-separated list of keywords and descriptive phrases that perfectly capture the style of the provided images. This description will be injected directly into another AI's prompt.
+Produce a detailed, comma-separated list of descriptive phrases. This is not just a list of keywords; it's a style mandate. Be forceful and precise. The goal is for the next AI to have no ambiguity about the required aesthetic.
 
 **Example Scenarios (Few-shot learning):**
 
 *   **Scenario 1:** (Images of a bright, airy room with light wood, white walls, and simple furniture)
-    *   **Your Output:** scandinavian design, minimalist, neutral color palette, natural light, light wood tones, cozy textiles, functional simplicity.
+    *   **Your Output:** A strict Scandinavian minimalist style. Dominant colors are crisp white, light gray, and natural pine wood. Furniture is functional with clean, simple lines. Key materials include light oak wood floors, white-painted walls, and cozy, textured textiles like wool and linen in neutral tones. Lighting is bright, airy, and dominated by natural daylight from large windows. The overall vibe is calm, uncluttered, and functional.
 
 *   **Scenario 2:** (Images of a room with exposed brick, metal pipes, dark leather furniture, and Edison bulbs)
-    *   **Your Output:** industrial style, exposed brick, raw materials, metal accents, leather furniture, warehouse loft vibe, neutral and moody tones.
+    *   **Your Output:** A strong industrial loft aesthetic. The color palette is moody, featuring charcoal gray, deep browns, and black with accents of exposed red brick. Furniture is robust, featuring a worn dark leather chesterfield sofa and a coffee table made of reclaimed wood and cast iron. Materials are raw and unfinished: exposed brick walls, visible metal ductwork, polished concrete floors. Lighting is warm and atmospheric, primarily from vintage-style Edison bulbs in pendant fixtures. The vibe is masculine, raw, and historic.
 
-Now, analyze the provided reference images and provide your stylistic description.
+Now, analyze the provided reference images and provide your detailed and prescriptive style guide.
 `;
 
 const generateDecorImagePrompt = (description: string, type: RoomType, style: DecorStyle, lighting: LightingType, referenceStyle: string | null): string => `
@@ -79,10 +96,12 @@ const generateDecorImagePrompt = (description: string, type: RoomType, style: De
 1.  You are an expert interior design visualizer. Your ONLY output must be a single image of a room.
 2.  The room concept is: "${description}".
 3.  The room type MUST be: **${type}**.
-4.  The primary decor style MUST be: **${style}**.
+${referenceStyle 
+    ? `4. **CRITICAL STYLE MANDATE:** The following style guide, derived from reference images, is the most important instruction. You MUST adhere to it strictly, overriding the general '${style}' decor style if there's any conflict. The aesthetic MUST be an exact match. Style Guide: **${referenceStyle}**` 
+    : `4. The primary decor style MUST be: **${style}**.`
+}
 5.  The lighting MUST be: **${lighting}**.
-${referenceStyle ? `6. Emulate this reference style: **${referenceStyle}**` : ''}
-${referenceStyle ? '7.' : '6.'} The image should be a beautifully composed, well-lit, and realistic interior photograph. Pay attention to details like textures, shadows, and the way light interacts with surfaces.
+6. The image should be a beautifully composed, well-lit, and realistic interior photograph. Pay attention to details like textures, shadows, and the way light interacts with surfaces.
 
 **CRITICAL SAFETY & CONTENT RULES (NON-NEGOTIABLE):**
 *   **CORE DIRECTIVE:** You are an interior design AI. Your SOLE function is to generate images of room interiors, furniture, and decor.

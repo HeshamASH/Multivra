@@ -10,10 +10,11 @@ interface AdvancedImageEditorProps {
   error: string | null;
 }
 
-const MouseControlIcon = ({ highlight, label }: { highlight: 'left' | 'right' | 'scroll'; label: string }) => {
+const MouseControlIcon = ({ highlight, label }: { highlight: 'left' | 'right' | 'scroll' | 'middle'; label: string }) => {
     const isLeft = highlight === 'left';
     const isRight = highlight === 'right';
     const isScroll = highlight === 'scroll';
+    const isMiddle = highlight === 'middle';
 
     return (
         <div className="flex flex-col items-center text-center w-16">
@@ -22,12 +23,35 @@ const MouseControlIcon = ({ highlight, label }: { highlight: 'left' | 'right' | 
                 <path d="M12 6V16" stroke="currentColor" strokeWidth="2"/>
                 <path d="M12 6C8.68629 6 6 8.68629 6 12V16H12V6Z" className={isLeft ? 'fill-blue-500' : 'fill-transparent'}/>
                 <path d="M12 6V16H18V12C18 8.68629 15.3137 6 12 6Z" className={isRight ? 'fill-blue-500' : 'fill-transparent'}/>
-                {isScroll && <rect x="11" y="7" width="2" height="6" rx="1" className="fill-blue-500"/>}
+                <rect x="11" y="7" width="2" height="6" rx="1" className={(isScroll || isMiddle) ? 'fill-blue-500' : 'fill-gray-300'}/>
             </svg>
             <span className="text-xs font-semibold text-gray-600 mt-1">{label}</span>
         </div>
     );
 };
+
+const getObjectFitSize = (img: HTMLImageElement) => {
+    const { naturalWidth, naturalHeight, clientWidth, clientHeight } = img;
+    const naturalAspectRatio = naturalWidth / naturalHeight;
+    const clientAspectRatio = clientWidth / clientHeight;
+
+    let renderWidth = clientWidth;
+    let renderHeight = clientHeight;
+    let xOffset = 0;
+    let yOffset = 0;
+
+    // Image is wider than its container, so it's letterboxed vertically
+    if (naturalAspectRatio > clientAspectRatio) { 
+        renderHeight = clientWidth / naturalAspectRatio;
+        yOffset = (clientHeight - renderHeight) / 2;
+    } 
+    // Image is taller than or has the same aspect ratio as its container, so it's letterboxed horizontally
+    else { 
+        renderWidth = clientHeight * naturalAspectRatio;
+        xOffset = (clientWidth - renderWidth) / 2;
+    }
+    return { renderWidth, renderHeight, xOffset, yOffset };
+}
 
 const AdvancedImageEditor: React.FC<AdvancedImageEditorProps> = ({ isOpen, onClose, onSubmit, imageUrl, isApplyingEdit, error }) => {
     const [activeTab, setActiveTab] = useState<'simple' | 'advanced'>('simple');
@@ -41,10 +65,14 @@ const AdvancedImageEditor: React.FC<AdvancedImageEditorProps> = ({ isOpen, onClo
     const [canvasHistory, setCanvasHistory] = useState<ImageData[]>([]);
     const [historyIndex, setHistoryIndex] = useState(-1);
     const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
+    const [isPanning, setIsPanning] = useState(false);
+    const [panStart, setPanStart] = useState({ x: 0, y: 0 });
 
     const resetAdvancedState = useCallback(() => {
         setComments([]);
         setTransform({ scale: 1, x: 0, y: 0 });
+        setIsPanning(false);
+        setPanStart({ x: 0, y: 0 });
         const canvas = canvasRef.current;
         if (canvas) {
             const context = canvas.getContext('2d');
@@ -69,19 +97,45 @@ const AdvancedImageEditor: React.FC<AdvancedImageEditorProps> = ({ isOpen, onClo
     }, [isOpen, resetAdvancedState]);
     
     useEffect(() => {
+        if (isOpen) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = 'auto';
+        }
+        return () => {
+            document.body.style.overflow = 'auto';
+        };
+    }, [isOpen]);
+
+    useEffect(() => {
         const image = imageRef.current;
         const canvas = canvasRef.current;
         if (image && canvas && isOpen && activeTab === 'advanced') {
             const setCanvasSize = () => {
                 const { clientWidth, clientHeight } = image;
-                if (canvas.width !== clientWidth || canvas.height !== clientHeight) {
-                    canvas.width = clientWidth;
-                    canvas.height = clientHeight;
+                if (clientWidth === 0 || clientHeight === 0 || image.naturalWidth === 0) {
+                    return; // Avoid division by zero and running on unloaded image
+                }
+
+                const { renderWidth, renderHeight, xOffset, yOffset } = getObjectFitSize(image);
+                
+                // Position canvas over the fitted image
+                canvas.style.left = `${xOffset}px`;
+                canvas.style.top = `${yOffset}px`;
+
+                // Set canvas display size
+                canvas.style.width = `${renderWidth}px`;
+                canvas.style.height = `${renderHeight}px`;
+
+                // Set canvas buffer size to match
+                if (canvas.width !== renderWidth || canvas.height !== renderHeight) {
+                    canvas.width = renderWidth;
+                    canvas.height = renderHeight;
                     resetAdvancedState();
                 }
             };
             
-            if (image.complete) {
+            if (image.complete && image.naturalWidth > 0) {
               setCanvasSize();
             } else {
               image.onload = setCanvasSize;
@@ -93,30 +147,60 @@ const AdvancedImageEditor: React.FC<AdvancedImageEditorProps> = ({ isOpen, onClo
         }
     }, [imageUrl, isOpen, activeTab, resetAdvancedState]);
 
-    const getMousePos = (canvas: HTMLCanvasElement, e: React.MouseEvent<HTMLCanvasElement>) => {
+    const getMousePos = (canvas: HTMLCanvasElement, e: React.MouseEvent) => {
         const rect = canvas.getBoundingClientRect();
+        const mouseXOnScreen = e.clientX - rect.left;
+        const mouseYOnScreen = e.clientY - rect.top;
+        
         return {
-            x: (e.clientX - rect.left) / transform.scale,
-            y: (e.clientY - rect.top) / transform.scale,
+            x: mouseXOnScreen / transform.scale,
+            y: mouseYOnScreen / transform.scale,
         };
     };
     
     const handleWheel = (e: React.WheelEvent) => {
         e.preventDefault();
         const container = e.currentTarget as HTMLElement;
+        const image = imageRef.current;
+        if (!image) return;
+
         const rect = container.getBoundingClientRect();
-        const x = e.clientX - rect.left;
+        const x = e.clientX - rect.left; // Mouse position relative to container
         const y = e.clientY - rect.top;
 
         const delta = e.deltaY > 0 ? -0.1 : 0.1;
         const newScale = Math.max(1, Math.min(transform.scale + delta, 5));
+        
+        if (newScale === transform.scale) return;
 
         const worldX = (x - transform.x) / transform.scale;
         const worldY = (y - transform.y) / transform.scale;
         
-        const newX = x - worldX * newScale;
-        const newY = y - worldY * newScale;
+        let newX = x - worldX * newScale;
+        let newY = y - worldY * newScale;
 
+        const imageWidth = image.clientWidth;
+        const imageHeight = image.clientHeight;
+        const containerWidth = container.clientWidth;
+        const containerHeight = container.clientHeight;
+
+        const maxTx = 0;
+        const maxTy = 0;
+        const minTx = containerWidth - imageWidth * newScale;
+        const minTy = containerHeight - imageHeight * newScale;
+        
+        if (imageWidth * newScale <= containerWidth) {
+            newX = (containerWidth - imageWidth * newScale) / 2;
+        } else {
+            newX = Math.max(minTx, Math.min(newX, maxTx));
+        }
+
+        if (imageHeight * newScale <= containerHeight) {
+            newY = (containerHeight - imageHeight * newScale) / 2;
+        } else {
+            newY = Math.max(minTy, Math.min(newY, maxTy));
+        }
+        
         setTransform({ scale: newScale, x: newX, y: newY });
     };
 
@@ -149,6 +233,9 @@ const AdvancedImageEditor: React.FC<AdvancedImageEditorProps> = ({ isOpen, onClo
             context.beginPath();
             context.moveTo(pos.x, pos.y);
             setIsDrawing(true);
+        } else if (e.button === 1) { // Middle click for panning
+            setIsPanning(true);
+            setPanStart({ x: e.clientX - transform.x, y: e.clientY - transform.y });
         } else if (e.button === 2) { // Right click for commenting
             const pos = getMousePos(canvas, e);
             const x = (pos.x / canvas.width) * 100;
@@ -158,21 +245,52 @@ const AdvancedImageEditor: React.FC<AdvancedImageEditorProps> = ({ isOpen, onClo
     };
 
     const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-        if (!isDrawing) return;
+        if (isDrawing) {
+            const canvas = canvasRef.current!;
+            const context = canvas.getContext('2d')!;
+            const pos = getMousePos(canvas, e);
+            
+            context.lineTo(pos.x, pos.y);
+            context.stroke();
+            return;
+        }
 
-        const canvas = canvasRef.current!;
-        const context = canvas.getContext('2d')!;
-        const pos = getMousePos(canvas, e);
-        
-        context.lineTo(pos.x, pos.y);
-        context.stroke();
+        if (isPanning) {
+            const canvas = canvasRef.current;
+            const image = imageRef.current;
+            if (!canvas || !image) return;
+
+            const newX = e.clientX - panStart.x;
+            const newY = e.clientY - panStart.y;
+
+            const imageWidth = image.clientWidth;
+            const imageHeight = image.clientHeight;
+            const container = canvas.parentElement!;
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+            const { scale } = transform;
+
+            const maxTx = 0;
+            const maxTy = 0;
+            const minTx = containerWidth - imageWidth * scale;
+            const minTy = containerHeight - imageHeight * scale;
+
+            const constrainedX = imageWidth * scale <= containerWidth ? (containerWidth - imageWidth * scale) / 2 : Math.max(minTx, Math.min(newX, maxTx));
+            const constrainedY = imageHeight * scale <= containerHeight ? (containerHeight - imageHeight * scale) / 2 : Math.max(minTy, Math.min(newY, maxTy));
+            
+            setTransform(t => ({ ...t, x: constrainedX, y: constrainedY }));
+        }
     };
 
     const handleCanvasMouseUp = useCallback(() => {
-        if (!isDrawing) return;
-        setIsDrawing(false);
-        saveCanvasState();
-    }, [isDrawing, saveCanvasState]);
+        if (isDrawing) {
+            setIsDrawing(false);
+            saveCanvasState();
+        }
+        if (isPanning) {
+            setIsPanning(false);
+        }
+    }, [isDrawing, isPanning, saveCanvasState]);
 
     const handleUndo = useCallback(() => {
         if (historyIndex <= 0) return;
@@ -272,10 +390,10 @@ const AdvancedImageEditor: React.FC<AdvancedImageEditorProps> = ({ isOpen, onClo
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 h-full">
                             <div className="md:col-span-2 relative overflow-hidden bg-gray-100 rounded-md" onWheel={handleWheel}>
                                 <div className="w-full h-full" style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: '0 0' }}>
-                                    <img ref={imageRef} src={imageUrl} alt="Design to edit" className="w-full h-auto object-contain" />
+                                    <img ref={imageRef} src={imageUrl} alt="Design to edit" className="w-full h-full object-contain" />
                                     <canvas 
                                         ref={canvasRef} 
-                                        className="absolute top-0 left-0 cursor-crosshair" 
+                                        className={`absolute ${isPanning ? 'cursor-grabbing' : 'cursor-crosshair'}`}
                                         onMouseDown={handleCanvasMouseDown} 
                                         onMouseMove={handleCanvasMouseMove} 
                                         onMouseUp={handleCanvasMouseUp} 
@@ -298,7 +416,7 @@ const AdvancedImageEditor: React.FC<AdvancedImageEditorProps> = ({ isOpen, onClo
                                         <button title="Clear All (Alt+Shift+C)" onClick={resetAdvancedState} className="px-3 py-1 text-sm rounded-md border bg-white">Clear All</button>
                                     </div>
                                     <p className="text-xs text-gray-500 mt-2">
-                                        Left-click to draw. Right-click to add a comment pin.
+                                        Left-click to draw. Right-click to add a comment.
                                     </p>
                                     <div className="flex justify-around items-start mt-3 pt-3 border-t">
                                         <MouseControlIcon highlight="left" label="Draw" />
