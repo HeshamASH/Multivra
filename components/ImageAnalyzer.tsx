@@ -19,7 +19,8 @@ const ReferenceImageUploader: React.FC<ReferenceImageUploaderProps> = ({ onFiles
             setFiles(selectedFiles);
             
             const newPreviews: string[] = [];
-            selectedFiles.forEach(file => {
+            // FIX: Explicitly type `file` as `File` to fix type inference issue.
+            selectedFiles.forEach((file: File) => {
                 const reader = new FileReader();
                 reader.onloadend = () => {
                     newPreviews.push(reader.result as string);

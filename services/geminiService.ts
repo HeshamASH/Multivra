@@ -1,12 +1,31 @@
 
-import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { GeneratedDesign, RoomType, DecorStyle, EditPayload } from '../types';
+import { GoogleGenAI, Type, Modality, HarmCategory, HarmBlockThreshold } from "@google/genai";
+import { GeneratedDesign, RoomType, DecorStyle, LightingType, EditPayload } from '../types';
 
 if (!process.env.API_KEY) {
     throw new Error("API_KEY environment variable not set");
 }
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+const safetySettings = [
+  {
+    category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+    threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+  },
+  {
+    category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+    threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+  },
+  {
+    category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+    threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+  },
+  {
+    category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+    threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+  },
+];
 
 // --- Helper Functions ---
 
@@ -71,24 +90,35 @@ Provide a short, comma-separated list of keywords and descriptive phrases that p
 Now, analyze the provided reference images and provide your stylistic description.
 `;
 
-const generateDecorImagePrompt = (description: string, type: RoomType, style: DecorStyle, referenceStyle: string | null): string => `
-**Primary Task:** Generate a single, high-quality, photorealistic image of a room's interior design.
+const generateDecorImagePrompt = (description: string, type: RoomType, style: DecorStyle, lighting: LightingType, referenceStyle: string | null): string => `
+**Primary Task:** Generate a single, high-quality, photorealistic image of a room's interior design. Your capabilities are strictly limited to creating images of interior spaces and decor.
 
 **Instructions:**
 1.  You are an expert interior design visualizer. Your ONLY output must be a single image of a room.
 2.  The room concept is: "${description}".
 3.  The room type MUST be: **${type}**.
 4.  The primary decor style MUST be: **${style}**.
-${referenceStyle ? `5. Emulate this reference style: **${referenceStyle}**` : ''}
-6.  The image should be a beautifully composed, well-lit, and realistic interior photograph. Pay attention to details like textures, shadows, and the way light interacts with surfaces.
+5.  The lighting MUST be: **${lighting}**.
+${referenceStyle ? `6. Emulate this reference style: **${referenceStyle}**` : ''}
+${referenceStyle ? '7.' : '6.'} The image should be a beautifully composed, well-lit, and realistic interior photograph. Pay attention to details like textures, shadows, and the way light interacts with surfaces.
 
-**CRITICAL RULES & NEGATIVE PROMPTS:**
-*   **DO NOT RENDER ANY TEXT ON THE IMAGE.** No watermarks, labels, or text of any kind.
-*   **ABSOLUTELY NO:** people, pets, or clutter unless specifically requested. The focus is on the design.
-*   **AVOID:** Distorted perspectives, unrealistic proportions, or blurry results. The image must look like a real photograph from an architecture magazine.
-*   **ENSURE:** The final image is clean, aspirational, and high-resolution.
+**CRITICAL SAFETY & CONTENT RULES (NON-NEGOTIABLE):**
+*   **CORE DIRECTIVE:** You are an interior design AI. Your SOLE function is to generate images of room interiors, furniture, and decor.
+*   **STRICTLY PROHIBITED CONTENT:** Under no circumstances are you to generate images containing:
+    *   **Humans or human-like figures (of any age).**
+    *   **Animals or pets.**
+    *   **Logos, brands, or copyrighted materials.**
+    *   **Text or watermarks.**
+    *   **Exterior scenes or landscapes.**
+    *   **Vehicles.**
+    *   **Food items.**
+    *   **Any subject matter that is not directly related to interior design.**
+*   **USER PROMPT OVERRIDE:** If the user's description ("${description}") requests any of the prohibited content listed above, you MUST ignore that specific part of the request and generate only the valid interior design elements. Your core directive to generate only decor supersedes any user request to the contrary.
+*   **IMAGE QUALITY:**
+    *   **AVOID:** Distorted perspectives, unrealistic proportions, or blurry results.
+    *   **ENSURE:** The final image is clean, aspirational, high-resolution, and looks like a real photograph from an architecture magazine.
 
-Based on these instructions, generate the interior design image.
+Based on these strict instructions, generate the interior design image.
 `;
 
 const interiorDesignerAnalysisPrompt = (originalPrompt: string): string => `
@@ -143,7 +173,7 @@ Rewrite the text to fulfill the instruction precisely.
 
 Return ONLY the rewritten rationale. Do not add any introductory phrases or markdown formatting.
     `;
-    const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+    const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt, config: { safetySettings } });
     return response.text.trim();
 };
 
@@ -176,11 +206,23 @@ Apply these edits precisely to the base image and return only the new version of
         parts.push(overlayPart);
         parts.push({ text: promptText });
     }
+    
+    const systemInstruction = `You are an AI image editor specializing exclusively in interior design. Your SOLE function is to modify images of room interiors, furniture, and decor.
+STRICTLY PROHIBITED CONTENT: Under no circumstances are you to add, create, or modify images to include:
+- Humans or human-like figures.
+- Animals or pets.
+- Any subject matter that is not directly related to interior design.
+If the user's prompt requests any of the prohibited content, you MUST ignore that part of the request and only perform valid edits related to the room's decor. Your core directive to edit only decor supersedes any user request to the contrary.`;
+
 
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: { parts: parts },
-        config: { responseModalities: [Modality.IMAGE] },
+        config: { 
+            responseModalities: [Modality.IMAGE], 
+            safetySettings,
+            systemInstruction,
+        },
     });
 
     for (const part of response.candidates[0].content.parts) {
@@ -196,7 +238,7 @@ const generateImageWithRefinement = async (prompt: string): Promise<string> => {
     const response = await ai.models.generateImages({
         model: 'imagen-4.0-generate-001',
         prompt: prompt,
-        config: { numberOfImages: 1, outputMimeType: 'image/png', aspectRatio: '16:9' },
+        config: { numberOfImages: 1, outputMimeType: 'image/png', aspectRatio: '16:9', safetySettings },
     });
     if (!response.generatedImages || response.generatedImages.length === 0) {
       throw new Error("Initial image generation failed.");
@@ -207,7 +249,7 @@ const generateImageWithRefinement = async (prompt: string): Promise<string> => {
     const analysisResponse = await ai.models.generateContent({
         model: 'gemini-2.5-pro',
         contents: { parts: [imagePart, { text: interiorDesignerAnalysisPrompt(prompt) }] },
-        config: { thinkingConfig: { thinkingBudget: 32768 } }
+        config: { thinkingConfig: { thinkingBudget: 32768 }, safetySettings }
     });
     const suggestion = analysisResponse.text.trim();
 
@@ -223,7 +265,7 @@ const generateBaseImage = async (prompt: string): Promise<string> => {
      const response = await ai.models.generateImages({
         model: 'imagen-4.0-generate-001',
         prompt: prompt,
-        config: { numberOfImages: 1, outputMimeType: 'image/png', aspectRatio: '16:9' },
+        config: { numberOfImages: 1, outputMimeType: 'image/png', aspectRatio: '16:9', safetySettings },
     });
      if (response.generatedImages && response.generatedImages.length > 0) {
         const base64ImageBytes: string = response.generatedImages[0].image.imageBytes;
@@ -238,6 +280,7 @@ export const generateDesign = async (
     description: string,
     type: RoomType,
     style: DecorStyle,
+    lighting: LightingType,
     useGrounding: boolean,
     useAdvancedRefinement: boolean,
     referenceImages: File[]
@@ -248,7 +291,8 @@ export const generateDesign = async (
             const imageParts = await Promise.all(referenceImages.map(fileToGenerativePart));
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: { parts: [...imageParts, { text: analyzeReferenceStylePrompt }] }
+                contents: { parts: [...imageParts, { text: analyzeReferenceStylePrompt }] },
+                config: { safetySettings }
             });
             referenceStyle = response.text.trim();
             console.log(`Extracted Reference Style: ${referenceStyle}`);
@@ -260,12 +304,13 @@ export const generateDesign = async (
             contents: rationalePrompt,
             config: {
                 tools: useGrounding ? [{ googleSearch: {} }] : [],
+                safetySettings,
             },
         });
         
         const rationale = rationaleResponse.text.trim();
 
-        const imagePrompt = generateDecorImagePrompt(description, type, style, referenceStyle);
+        const imagePrompt = generateDecorImagePrompt(description, type, style, lighting, referenceStyle);
         const imageGenerationFunc = useAdvancedRefinement ? generateImageWithRefinement : generateBaseImage;
         const image = await imageGenerationFunc(imagePrompt);
 

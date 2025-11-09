@@ -1,24 +1,35 @@
-import React, { useState, useCallback } from 'react';
-import { RoomType, DecorStyle, GeneratedDesign, InspirationTemplate } from './types';
-import { ROOM_TYPES, DECOR_STYLES, INSPIRATION_TEMPLATES } from './constants';
+import React, { useState, useCallback, useEffect } from 'react';
+import { RoomType, DecorStyle, GeneratedDesign, InspirationTemplate, LightingType, SavedDesign } from './types';
+import { ROOM_TYPES, DECOR_STYLES, LIGHTING_TYPES, INSPIRATION_TEMPLATES } from './constants';
 import { generateDesign } from './services/geminiService';
+import { getSavedDesigns, saveDesign, deleteDesign } from './utils/storage';
 import DesignOutputCard from './components/SocialPostCard';
 import Loader from './components/Loader';
 import ReferenceImageUploader from './components/ImageAnalyzer';
 import TemplateSelector from './components/TemplateSelector';
+import SavedDesignsGallery from './components/SavedDesignsGallery';
 
 const App: React.FC = () => {
   const [description, setDescription] = useState<string>('');
   const [roomType, setRoomType] = useState<RoomType>(RoomType.LivingRoom);
   const [decorStyle, setDecorStyle] = useState<DecorStyle>(DecorStyle.Modern);
+  const [lightingType, setLightingType] = useState<LightingType>(LightingType.BrightNatural);
   const [referenceImages, setReferenceImages] = useState<File[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<InspirationTemplate | null>(null);
   
   const [generatedDesign, setGeneratedDesign] = useState<GeneratedDesign | null>(null);
+  const [generatedInspirationUrls, setGeneratedInspirationUrls] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [useGrounding, setUseGrounding] = useState<boolean>(false);
   const [useAdvancedAnalysis, setUseAdvancedAnalysis] = useState<boolean>(false);
+  
+  const [savedDesigns, setSavedDesigns] = useState<SavedDesign[]>([]);
+  const [isGalleryOpen, setIsGalleryOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    setSavedDesigns(getSavedDesigns());
+  }, []);
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,16 +41,27 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     setGeneratedDesign(null);
+    setGeneratedInspirationUrls([]);
 
     try {
-      const design = await generateDesign(description, roomType, decorStyle, useGrounding, useAdvancedAnalysis, referenceImages);
+      const design = await generateDesign(description, roomType, decorStyle, lightingType, useGrounding, useAdvancedAnalysis, referenceImages);
+      
+      const urls = await Promise.all(
+        referenceImages.map(file => new Promise<string>(resolve => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        }))
+      );
+      setGeneratedInspirationUrls(urls);
       setGeneratedDesign(design);
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred.');
     } finally {
       setIsLoading(false);
     }
-  }, [description, roomType, decorStyle, useGrounding, useAdvancedAnalysis, referenceImages]);
+  }, [description, roomType, decorStyle, lightingType, useGrounding, useAdvancedAnalysis, referenceImages]);
   
   const handleSelectTemplate = (template: InspirationTemplate) => {
     setSelectedTemplate(template);
@@ -48,16 +70,50 @@ const App: React.FC = () => {
     setDecorStyle(template.decorStyle);
   };
 
+  const handleSaveCurrentDesign = () => {
+    if (!generatedDesign) return;
+    const newDesigns = saveDesign({
+        rationale: generatedDesign.rationale,
+        image: generatedDesign.image,
+        inspirationImages: generatedInspirationUrls,
+    });
+    setSavedDesigns(newDesigns);
+  };
+
+  const handleLoadDesign = (design: SavedDesign) => {
+      setGeneratedDesign({ rationale: design.rationale, image: design.image });
+      setGeneratedInspirationUrls(design.inspirationImages);
+      setIsGalleryOpen(false);
+      // Use a timeout to ensure the DOM has updated before scrolling
+      setTimeout(() => {
+        const resultElement = document.getElementById('result-card');
+        resultElement?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+  };
+
+  const handleDeleteDesign = (id: string) => {
+      const newDesigns = deleteDesign(id);
+      setSavedDesigns(newDesigns);
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 text-gray-800 font-sans">
-      <div className="container mx-auto px-4 py-8 md:py-16">
+      <div className="container mx-auto px-4 py-8 md:py-12">
         <header className="text-center mb-12">
             <h1 className="text-4xl md:text-6xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-sky-500">
                 AI Interior Design Assistant
             </h1>
-            <p className="mt-4 text-lg text-gray-600 max-w-3xl mx-auto">
+            <p className="mt-6 text-lg text-gray-600 max-w-3xl mx-auto">
                 Describe your dream room, and let AI generate a stunning design concept and a detailed rationale for it.
             </p>
+            <div className="mt-6">
+              <button
+                onClick={() => setIsGalleryOpen(true)}
+                className="px-6 py-2 bg-white text-blue-600 font-semibold rounded-full shadow-md hover:bg-gray-200 transition-colors"
+              >
+                My Saved Designs ({savedDesigns.length})
+              </button>
+            </div>
         </header>
 
         <main>
@@ -125,12 +181,29 @@ const App: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xl font-semibold mb-3 text-gray-700">4. Upload Inspiration Images (Optional)</label>
+                <label className="block text-xl font-semibold mb-3 text-gray-700">4. Choose Lighting</label>
+                <div className="flex flex-wrap gap-3">
+                  {LIGHTING_TYPES.map((l) => (
+                    <button
+                      key={l}
+                      type="button"
+                      onClick={() => {
+                        setLightingType(l);
+                      }}
+                      className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-all duration-200 ${ lightingType === l ? 'bg-amber-500 text-white shadow-lg scale-105' : 'bg-gray-200 text-gray-700 hover:bg-gray-300' }`}
+                      disabled={isLoading}
+                    >{l}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xl font-semibold mb-3 text-gray-700">5. Upload Inspiration Images (Optional)</label>
                 <ReferenceImageUploader onFilesChange={setReferenceImages} disabled={isLoading} />
               </div>
 
               <div className="p-4 bg-gray-50 rounded-lg space-y-4 border border-gray-200">
-                  <h3 className="text-xl font-semibold text-gray-700">5. Advanced Options</h3>
+                  <h3 className="text-xl font-semibold text-gray-700">6. Advanced Options</h3>
                   <div className="flex items-center justify-between">
                       <label htmlFor="grounding-toggle" className="flex flex-col cursor-pointer">
                           <span className="font-medium text-gray-800">Use Latest Trends (via Google Search)</span>
@@ -157,7 +230,7 @@ const App: React.FC = () => {
             </form>
           </div>
 
-          <div className="mt-16">
+          <div id="result-card" className="mt-16">
             {isLoading && <Loader subMessage={useAdvancedAnalysis ? 'The AI Interior Designer is reviewing your room for quality and accuracy. This may take longer.' : undefined} />}
             {error && (
               <div className="text-center p-4 bg-red-100 border border-red-300 text-red-800 rounded-lg max-w-2xl mx-auto">
@@ -166,10 +239,18 @@ const App: React.FC = () => {
               </div>
             )}
             {generatedDesign && (
-              <DesignOutputCard design={generatedDesign} />
+              <DesignOutputCard design={generatedDesign} inspirationImages={generatedInspirationUrls} onSave={handleSaveCurrentDesign} />
             )}
           </div>
         </main>
+        
+        <SavedDesignsGallery 
+            isOpen={isGalleryOpen}
+            onClose={() => setIsGalleryOpen(false)}
+            designs={savedDesigns}
+            onLoad={handleLoadDesign}
+            onDelete={handleDeleteDesign}
+        />
       </div>
     </div>
   );

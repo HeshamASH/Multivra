@@ -1,4 +1,4 @@
-import { RoomType, DecorStyle, InspirationTemplate } from './types';
+import { RoomType, DecorStyle, LightingType, InspirationTemplate } from './types';
 
 export const ROOM_TYPES: RoomType[] = [
   RoomType.LivingRoom,
@@ -14,6 +14,12 @@ export const DECOR_STYLES: DecorStyle[] = [
   DecorStyle.Bohemian,
   DecorStyle.Industrial,
   DecorStyle.Minimalist,
+];
+
+export const LIGHTING_TYPES: LightingType[] = [
+  LightingType.BrightNatural,
+  LightingType.WarmAmbient,
+  LightingType.DramaticAccent,
 ];
 
 export const INSPIRATION_TEMPLATES: InspirationTemplate[] = [

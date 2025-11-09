@@ -14,9 +14,21 @@ export enum DecorStyle {
   Minimalist = 'Minimalist',
 }
 
+export enum LightingType {
+  BrightNatural = 'Bright Natural Light',
+  WarmAmbient = 'Warm Ambient Lighting',
+  DramaticAccent = 'Dramatic Accent Lighting',
+}
+
 export interface GeneratedDesign {
   rationale: string;
   image: string | null;
+}
+
+export interface SavedDesign extends GeneratedDesign {
+  id: string;
+  timestamp: number;
+  inspirationImages: string[];
 }
 
 export interface InspirationTemplate {
