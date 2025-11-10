@@ -20,6 +20,8 @@ export enum LightingType {
   DramaticAccent = 'Dramatic Accent Lighting',
 }
 
+export type ImageQuality = 'ultra' | 'balanced' | 'fastest';
+
 export interface GeneratedDesign {
   rationale: string;
   image: string | null;
@@ -41,6 +43,12 @@ export interface InspirationTemplate {
 
 export interface LightingTemplate {
   name: LightingType;
+  description: string;
+}
+
+export interface ImageQualityOption {
+  id: ImageQuality;
+  name: string;
   description: string;
 }
 

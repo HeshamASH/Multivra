@@ -1,14 +1,18 @@
 
-
-
 import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { GeneratedDesign, RoomType, DecorStyle, LightingType, EditPayload } from '../types';
+import { GeneratedDesign, RoomType, DecorStyle, LightingType, EditPayload, ImageQuality } from '../types';
 
 if (!process.env.API_KEY) {
     throw new Error("API_KEY environment variable not set");
 }
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+const imageModelMap: Record<ImageQuality, string> = {
+    ultra: 'imagen-4.0-ultra-generate-001',
+    balanced: 'imagen-4.0-generate-001',
+    fastest: 'imagen-4.0-fast-generate-001',
+};
 
 // --- Helper Functions ---
 
@@ -66,80 +70,98 @@ Return ONLY the design rationale.
 `;
 
 const analyzeReferenceStylePrompt = `
-You are a world-class interior design consultant and prompt engineer. Your task is to analyze a set of reference images of rooms and create a highly detailed and prescriptive style guide. This guide will be used by an image generation AI to replicate the style with maximum fidelity. Your analysis must be meticulous.
+You are a world-class AI creative director and style expert. Your unique skill is to analyze ANY inspirational image (not just rooms) and translate its aesthetic into a detailed and prescriptive interior design style guide. This guide will be used by an image generation AI to create a room that captures the mood, colors, and textures of the inspiration.
 
-**Analysis Checklist (be specific and detailed):**
-*   **Dominant Color Palette:** List the primary, secondary, and accent colors. Use specific color names (e.g., "sage green," "burnt orange," "charcoal gray") not just "neutral".
-*   **Furniture Style & Form:** Describe the shapes and designs. Are they "low-profile with clean lines," "ornate and traditional," "chunky and rustic"? Name specific styles if identifiable (e.g., Mid-Century Modern, Art Deco).
-*   **Key Materials & Textures:** Be exhaustive. List everything you see: "natural light oak wood," "blackened steel," "bouclé fabric," "tumbled leather," "honed marble," "exposed concrete."
-*   **Lighting Characteristics:** Describe the quality and source of light. Is it "diffuse, indirect natural light," "warm, low-level ambient light from multiple lamps," "dramatic, high-contrast spotlights"?
-*   **Decorative Elements & Vibe:** What are the key accessories? "minimalist decor," "abundant potted plants (ferns, monstera)," "eclectic mix of vintage art prints," "geometric patterned rugs." Describe the overall mood: "serene and calming," "energetic and vibrant," "sophisticated and moody."
+**Analysis & Translation Process:**
+1.  **Identify Core Aesthetics:** Look at the provided image(s) and identify the dominant mood, colors, textures, and shapes.
+2.  **Translate to Interior Design:** Convert these core aesthetics into actionable interior design terms.
+
+**Detailed Translation Checklist:**
+*   **Mood & Vibe Translation:** What is the overall feeling of the image (e.g., "serene and cosmic," "warm and earthy," "energetic and vibrant")? How would this translate to a room's atmosphere?
+*   **Color Palette Extraction:** List the primary, secondary, and accent colors from the image. Be descriptive (e.g., "deep indigo," "nebula pink," "star-like silver accents").
+*   **Texture & Material Inspiration:** What textures are visible or implied? Translate them into interior materials (e.g., "smooth, dark surfaces like polished marble," "rough, natural textures like raw wood," "soft, glowing elements like diffused lighting").
+*   **Forms & Lighting:** What shapes and forms are dominant? How does light behave in the image? Translate this into furniture styles and lighting design (e.g., "sleek, minimalist forms with soft curves," "dramatic, high-contrast accent lighting," "diffuse, ambient glow").
 
 **Output Instructions:**
-Produce a detailed, comma-separated list of descriptive phrases. This is not just a list of keywords; it's a style mandate. Be forceful and precise. The goal is for the next AI to have no ambiguity about the required aesthetic.
+Produce a detailed, comma-separated list of descriptive phrases that form a style mandate for an interior design AI. The goal is for the AI to create a room that *feels* like the inspiration images.
 
 **Example Scenarios (Few-shot learning):**
 
-*   **Scenario 1:** (Images of a bright, airy room with light wood, white walls, and simple furniture)
-    *   **Your Output:** A strict Scandinavian minimalist style. Dominant colors are crisp white, light gray, and natural pine wood. Furniture is functional with clean, simple lines. Key materials include light oak wood floors, white-painted walls, and cozy, textured textiles like wool and linen in neutral tones. Lighting is bright, airy, and dominated by natural daylight from large windows. The overall vibe is calm, uncluttered, and functional.
+*   **Scenario 1:** (Image of a misty, green forest at dawn)
+    *   **Your Output:** A tranquil, biophilic-inspired aesthetic. The color palette is dominated by deep forest green, muted sage, and earthy brown, with accents of soft, misty gray. Materials should be natural and textured: dark wood floors, moss-like velvet upholstery, stone accent walls, and plenty of live plants. Lighting should be soft, diffuse, and cool, mimicking morning light filtering through a canopy. The overall vibe is calm, grounding, and connected to nature.
 
-*   **Scenario 2:** (Images of a room with exposed brick, metal pipes, dark leather furniture, and Edison bulbs)
-    *   **Your Output:** A strong industrial loft aesthetic. The color palette is moody, featuring charcoal gray, deep browns, and black with accents of exposed red brick. Furniture is robust, featuring a worn dark leather chesterfield sofa and a coffee table made of reclaimed wood and cast iron. Materials are raw and unfinished: exposed brick walls, visible metal ductwork, polished concrete floors. Lighting is warm and atmospheric, primarily from vintage-style Edison bulbs in pendant fixtures. The vibe is masculine, raw, and historic.
+*   **Scenario 2:** (Image of a sun-drenched terracotta courtyard in Morocco)
+    *   **Your Output:** A warm, bohemian and eclectic style. The color palette features burnt orange, terracotta, and sandy beige, with vibrant cobalt blue and turquoise accents. Textures are rustic and handmade, including rough plaster walls, woven Berber rugs, and intricate tilework (Zellige). Furniture should be low-profile and made from carved wood. Lighting is bright but warm, with patterns cast from ornate metal lanterns. The mood is earthy, sunny, and artisanal.
 
-Now, analyze the provided reference images and provide your detailed and prescriptive style guide.
+Now, analyze the provided reference image(s) and provide your detailed and prescriptive interior design style guide.
 `;
 
 const generateDecorImagePrompt = (description: string, type: RoomType, style: DecorStyle, lighting: LightingType, referenceStyle: string | null): string => `
-**Primary Task:** Generate a single, high-quality, photorealistic image of a room's interior design. Your capabilities are strictly limited to creating images of interior spaces and decor.
+**Primary Task:** Generate ONE SINGLE, UNIFIED, professional, photorealistic photograph of a room's interior.
 
-**Instructions:**
-1.  You are an expert interior design visualizer. Your ONLY output must be a single image of a room.
-2.  The room concept is: "${description}".
-3.  The room type MUST be: **${type}**.
-${referenceStyle 
-    ? `4. **CRITICAL STYLE MANDATE:** The following style guide, derived from reference images, is the most important instruction. You MUST adhere to it strictly, overriding the general '${style}' decor style if there's any conflict. The aesthetic MUST be an exact match. Style Guide: **${referenceStyle}**` 
-    : `4. The primary decor style MUST be: **${style}**.`
-}
-5.  The lighting MUST be: **${lighting}**.
-6. The image should be a beautifully composed, well-lit, and realistic interior photograph. Pay attention to details like textures, shadows, and the way light interacts with surfaces.
+**CRITICAL CONTENT & FORMATTING SAFETY FILTER (ABSOLUTE & NON-NEGOTIABLE):**
+You are an interior design AI. Your capabilities are STRICTLY LIMITED to creating images of INTERIOR SPACES. Under NO CIRCUMSTANCES are you to generate any of the following prohibited content or formats:
+*   **NO COMPARISONS OR PANELS:** Absolutely NO side-by-side images, 'before/after' formats, multi-panel compositions, or image collages. The output must be one single, cohesive scene.
+*   **NO PEOPLE OR ANIMALS:** Absolutely NO humans, people, human-like figures, silhouettes, statues, mannequins. NO animals or pets. The room must be empty of all living beings.
+*   **NO TEXT OR SYMBOLS:** Absolutely NO text, letters, numbers, logos, brands, watermarks, or symbols.
+*   **NO DIAGRAMS OR FUNCTIONS:** Absolutely NO charts, graphs, or technical diagrams.
+*   **NO EXTERIORS OR OTHER SUBJECTS:** Absolutely NO exterior scenes, landscapes, vehicles, food, or any subject matter that is not directly related to interior design.
 
-**CRITICAL SAFETY & CONTENT RULES (NON-NEGOTIABLE):**
-*   **CORE DIRECTIVE:** You are an interior design AI. Your SOLE function is to generate images of room interiors, furniture, and decor.
-*   **STRICTLY PROHIBITED CONTENT:** Under no circumstances are you to generate images containing:
-    *   **Humans or human-like figures (of any age).**
-    *   **Animals or pets.**
-    *   **Logos, brands, or copyrighted materials.**
-    *   **Text or watermarks.**
-    *   **Exterior scenes or landscapes.**
-    *   **Vehicles.**
-    *   **Food items.**
-    *   **Any subject matter that is not directly related to interior design.**
-*   **USER PROMPT OVERRIDE:** If the user's description ("${description}") requests any of the prohibited content listed above, you MUST ignore that specific part of the request and generate only the valid interior design elements. Your core directive to generate only decor supersedes any user request to the contrary.
-*   **IMAGE QUALITY:**
-    *   **AVOID:** Distorted perspectives, unrealistic proportions, or blurry results.
-    *   **ENSURE:** The final image is clean, aspirational, high-resolution, and looks like a real photograph from an architecture magazine.
+**USER PROMPT OVERRIDE:** If the user's description ("${description}") contains a request for any of the prohibited content listed above, you MUST IGNORE that part of the request. Your core directive to generate only empty, sterile, single-frame interior decor scenes supersedes any user input to the contrary.
 
-Based on these strict instructions, generate the interior design image.
+**STYLE HIERARCHY:**
+The aesthetic of the single image is determined by this strict hierarchy:
+1.  **REFERENCE STYLE (If provided):** The following style guide is your absolute, non-negotiable mandate. It overrides all other style instructions. You must replicate its mood, color palette, materials, and lighting EXACTLY.
+    ${referenceStyle ? `**Style Guide Mandate:** ${referenceStyle}` : '*(No reference style provided.)*'}
+2.  **DECOR STYLE:** ${style}
+3.  **LIGHTING:** ${lighting}
+4.  **CONCEPT:** A room of type **${type}**, based on the concept: "${description}".
+
+**IMAGE QUALITY & REALISM REQUIREMENTS:**
+The final image must be indistinguishable from a high-end photograph from an architectural magazine.
+*   **PHOTOREALISM:** Pay extreme attention to realistic textures, soft shadows, and the natural behavior of light (reflection, refraction, diffusion).
+*   **COMPOSITION:** The scene must be well-composed, aspirational, and clean.
+*   **AVOID:** Do not produce anything that looks like a 3D render, a drawing, or a painting. Avoid flat lighting, hard CGI edges, distorted perspectives, or unrealistic proportions.
+
+Based on these strict instructions, generate the single interior design photograph.
 `;
 
 const interiorDesignerAnalysisPrompt = (originalPrompt: string): string => `
-You are a meticulous and world-class AI Interior Designer. Your task is to perform a rigorous analysis of a generated room image against its original design prompt. Your goal is to identify any deviations, flaws, or areas for improvement and provide a single, precise, and actionable command for an image editing AI.
+You are a meticulous and world-class AI Interior Designer with an obsessive eye for detail. Your task is to perform a rigorous Quality Assurance (QA) analysis of a generated room image against its original design prompt. Your goal is to identify ANY deviation from photorealism, physical possibility, or the user's request, and then provide a single, precise, and actionable command for an image editing AI to fix the most critical flaw.
 
 **Original Generation Prompt:**
 ---
 ${originalPrompt}
 ---
 
-**Your Analysis and Reasoning Process (Internal Monologue - do not show in output):**
-1.  **Style Adherence:** Does the room's aesthetic accurately reflect the requested decor style (e.g., Modern, Scandinavian)?
-2.  **Concept Accuracy:** Does the image include the key elements from the user's description (e.g., "a comfortable armchair," "exposed brick walls")?
-3.  **Realism & Quality:** Is the lighting believable? Are the textures and materials rendered well? Are there any strange artifacts or proportion issues?
-4.  **Composition:** Is the image well-composed and visually appealing? Could a minor change improve it?
+**Your Rigorous Quality Assurance Checklist (Internal Monologue - do not show in output):**
+1.  **Architectural & Geometric Integrity:**
+    *   Are all structural lines (walls, floors, ceilings) straight and correctly joined?
+    *   Is the perspective consistent? Is there any warping, bending, or distortion, especially around the edges?
+    *   Are windows and doors realistically placed and proportioned?
+
+2.  **Object & Furniture Realism:**
+    *   **Physical Plausibility:** Are all objects grounded? Do they obey gravity? Are there any strange artifacts, like objects floating, merging into each other, or passing through one another?
+    *   **Proportions:** Are the proportions of all furniture and decor items realistic relative to each other and the room? (e.g., no miniature chairs next to a giant table).
+    *   **Structural Soundness:** Do objects have the correct number of legs, handles, etc.? Is anything unnaturally thin, thick, or misshapen?
+
+3.  **Material & Texture Fidelity:**
+    *   Do materials look authentic? Does wood have grain? Does metal have a realistic sheen? Does fabric have texture?
+    *   Are reflections and refractions on surfaces like glass or polished floors physically accurate?
+
+4.  **Lighting & Shadow Consistency:**
+    *   Is there a clear, consistent primary light source?
+    *   Do all shadows in the scene logically correspond to this light source in direction, length, and softness? Are there any missing or extraneous shadows?
+    *   Is any object lit in a way that contradicts the main light source?
+
+5.  **Style & Concept Adherence:**
+    *   Does the image's aesthetic accurately reflect the requested decor style (e.g., Modern, Scandinavian)?
+    *   Does the image include the key elements from the user's description (e.g., "a comfortable armchair," "exposed brick walls")?
 
 **Output Instructions:**
 *   After your analysis, provide **only one** of two possible outputs:
-    1.  A single, direct, and actionable editing command if you find a flaw.
-    2.  The exact word "PERFECT" if the room perfectly meets all criteria.
+    1.  A single, direct, and actionable editing command to fix the MOST OBVIOUS FLAW if you find one. Be specific.
+    2.  The exact word "PERFECT" if the room perfectly meets all criteria and is indistinguishable from a real photograph.
 *   **Do not** add explanations or conversational text. Your output must be only the command or the word "PERFECT".
 
 **Example Scenarios (Few-shot learning):**
@@ -153,6 +175,10 @@ ${originalPrompt}
     *   **Your Output:** Increase the amount of natural light coming from the window to make the room brighter and more airy.
 
 *   **Scenario 3:**
+    *   **Analysis:** The leg of the coffee table appears to be bending unnaturally.
+    *   **Your Output:** Straighten the front leg of the coffee table to make it look realistic and physically stable.
+
+*   **Scenario 4:**
     *   **Analysis:** The design is perfect. It's beautiful, accurate, and high-quality.
     *   **Your Output:** PERFECT
 
@@ -186,8 +212,18 @@ export const editImage = async (imageDataUrl: string, payload: EditPayload): Pro
     const parts: any[] = [baseImagePart];
     let promptText = '';
 
+    const editContentPolicy = `
+**CRITICAL CONTENT POLICY (NON-NEGOTIABLE):**
+Your SOLE function is to edit images of room interiors. You MUST NOT introduce any of the following elements, even if explicitly requested by the user:
+- **NO HUMANS:** Do not add humans, people, or human-like figures of any age or style.
+- **NO TEXT:** Do not add text, letters, numbers, or watermarks.
+- **NO DIAGRAMS:** Do not add charts, graphs, functions, or technical diagrams.
+- **NO ANIMALS:** Do not add pets or animals of any kind.
+
+Your core directive to edit only decor and architectural elements supersedes any user request to the contrary. If the user asks for a prohibited element, IGNORE that part of the request and complete the edit focusing only on valid interior design changes.`;
+
     if (payload.type === 'simple') {
-        promptText = `This is a photo of a room's interior. ${payload.prompt}`;
+        promptText = `This is a photo of a room's interior. ${payload.prompt}. ${editContentPolicy}`;
         parts.push({ text: promptText });
     } else { // Advanced edit
         const overlayPart = dataUrlToGenerativePart(payload.overlayDataUrl);
@@ -204,6 +240,7 @@ The user has provided a second, transparent overlay image with drawings highligh
 ${commentsText}
 
 Apply these edits precisely to the base image and return only the new version of the image. The user's drawings on the overlay are the primary guide for where to apply changes.
+${editContentPolicy}
 `;
         parts.push(overlayPart);
         parts.push({ text: promptText });
@@ -227,10 +264,10 @@ Apply these edits precisely to the base image and return only the new version of
     throw new Error("Failed to edit design image.");
 };
 
-const generateImageWithRefinement = async (prompt: string): Promise<string> => {
+const generateImageWithRefinement = async (prompt: string, modelName: string): Promise<string> => {
     // FIX: Removed deprecated safetySettings from config.
     const response = await ai.models.generateImages({
-        model: 'imagen-4.0-generate-001',
+        model: modelName,
         prompt: prompt,
         config: { numberOfImages: 1, outputMimeType: 'image/png', aspectRatio: '16:9' },
     });
@@ -256,10 +293,10 @@ const generateImageWithRefinement = async (prompt: string): Promise<string> => {
     return await editImage(initialImage, { type: 'simple', prompt: suggestion });
 };
 
-const generateBaseImage = async (prompt: string): Promise<string> => {
+const generateBaseImage = async (prompt: string, modelName: string): Promise<string> => {
     // FIX: Removed deprecated safetySettings from config.
      const response = await ai.models.generateImages({
-        model: 'imagen-4.0-generate-001',
+        model: modelName,
         prompt: prompt,
         config: { numberOfImages: 1, outputMimeType: 'image/png', aspectRatio: '16:9' },
     });
@@ -279,7 +316,8 @@ export const generateDesign = async (
     lighting: LightingType,
     useGrounding: boolean,
     useAdvancedRefinement: boolean,
-    referenceImages: File[]
+    referenceImages: File[],
+    imageQuality: ImageQuality
 ): Promise<GeneratedDesign> => {
     try {
         let referenceStyle: string | null = null;
@@ -306,8 +344,11 @@ export const generateDesign = async (
         
         const rationale = rationaleResponse.text.trim();
 
+        const imageModelName = imageModelMap[imageQuality];
         const imagePrompt = generateDecorImagePrompt(description, type, style, lighting, referenceStyle);
-        const imageGenerationFunc = useAdvancedRefinement ? generateImageWithRefinement : generateBaseImage;
+        const imageGenerationFunc = useAdvancedRefinement 
+            ? (prompt: string) => generateImageWithRefinement(prompt, imageModelName)
+            : (prompt: string) => generateBaseImage(prompt, imageModelName);
         const image = await imageGenerationFunc(imagePrompt);
 
         return { rationale, image };

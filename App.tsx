@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { RoomType, DecorStyle, GeneratedDesign, InspirationTemplate, LightingType, SavedDesign } from './types';
-import { ROOM_TYPES, DECOR_STYLES, LIGHTING_TEMPLATES, INSPIRATION_TEMPLATES } from './constants';
+import { RoomType, DecorStyle, GeneratedDesign, InspirationTemplate, LightingType, SavedDesign, ImageQuality } from './types';
+import { ROOM_TYPES, DECOR_STYLES, LIGHTING_TEMPLATES, INSPIRATION_TEMPLATES, IMAGE_QUALITY_OPTIONS } from './constants';
 import { generateDesign } from './services/geminiService';
 import { getSavedDesigns, saveDesign, deleteDesign } from './utils/storage';
 import DesignOutputCard from './components/SocialPostCard';
@@ -54,6 +54,7 @@ const App: React.FC = () => {
   const [roomType, setRoomType] = useState<RoomType>(RoomType.LivingRoom);
   const [decorStyle, setDecorStyle] = useState<DecorStyle>(DecorStyle.Modern);
   const [lightingType, setLightingType] = useState<LightingType>(LightingType.BrightNatural);
+  const [imageQuality, setImageQuality] = useState<ImageQuality>('balanced');
   const [referenceImages, setReferenceImages] = useState<File[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<InspirationTemplate | null>(null);
   
@@ -86,7 +87,7 @@ const App: React.FC = () => {
     setGeneratedInspirationUrls([]);
 
     try {
-      const design = await generateDesign(description, roomType, decorStyle, lightingType, useGrounding, useAdvancedAnalysis, referenceImages);
+      const design = await generateDesign(description, roomType, decorStyle, lightingType, useGrounding, useAdvancedAnalysis, referenceImages, imageQuality);
       
       const urls = await Promise.all(
         referenceImages.map(file => new Promise<string>(resolve => {
@@ -104,7 +105,7 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [description, roomType, decorStyle, lightingType, useGrounding, useAdvancedAnalysis, referenceImages]);
+  }, [description, roomType, decorStyle, lightingType, useGrounding, useAdvancedAnalysis, referenceImages, imageQuality]);
   
   const handleSelectTemplate = (template: InspirationTemplate) => {
     setSelectedTemplate(template);
@@ -116,11 +117,15 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSaveCurrentDesign = (editedDesign: GeneratedDesign) => {
-    if (!editedDesign.image) return;
+  const handleDesignUpdate = (updatedDesign: GeneratedDesign) => {
+    setGeneratedDesign(updatedDesign);
+  };
+
+  const handleSaveDesign = () => {
+    if (!generatedDesign || !generatedDesign.image) return;
     const newDesigns = saveDesign({
-        rationale: editedDesign.rationale,
-        image: editedDesign.image,
+        rationale: generatedDesign.rationale,
+        image: generatedDesign.image,
         inspirationImages: generatedInspirationUrls,
     });
     setSavedDesigns(newDesigns);
@@ -239,13 +244,35 @@ const App: React.FC = () => {
                   />
                 </div>
 
+                 <div>
+                    <label className="block text-xl font-semibold mb-3 text-gray-700">5. Select Image Quality</label>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {IMAGE_QUALITY_OPTIONS.map((option) => (
+                            <button
+                                key={option.id}
+                                type="button"
+                                onClick={() => setImageQuality(option.id)}
+                                disabled={isLoading}
+                                className={`p-4 rounded-lg text-left transition-all duration-200 border h-full flex flex-col ${
+                                imageQuality === option.id
+                                    ? 'bg-indigo-50 border-indigo-500 shadow-lg ring-2 ring-indigo-500/50'
+                                    : 'bg-white border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                                } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                                <h4 className="font-bold text-sm text-gray-800">{option.name}</h4>
+                                <p className="text-xs text-gray-600 mt-1 flex-grow">{option.description}</p>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
                 <div>
-                  <label className="block text-xl font-semibold mb-3 text-gray-700">5. Upload Inspiration Images (Optional)</label>
+                  <label className="block text-xl font-semibold mb-3 text-gray-700">6. Upload Inspiration Images (Optional)</label>
                   <ReferenceImageUploader onFilesChange={setReferenceImages} disabled={isLoading} />
                 </div>
 
                 <div className="p-4 bg-gray-50 rounded-lg space-y-4 border border-gray-200">
-                    <h3 className="text-xl font-semibold text-gray-700">6. Advanced Options</h3>
+                    <h3 className="text-xl font-semibold text-gray-700">7. Advanced Options</h3>
                     <div className="flex items-center justify-between">
                         <label htmlFor="grounding-toggle" className="flex flex-col cursor-pointer">
                             <span className="font-medium text-gray-800">Use Latest Trends (via Google Search)</span>
@@ -284,7 +311,8 @@ const App: React.FC = () => {
                 <DesignOutputCard 
                   design={generatedDesign} 
                   inspirationImages={generatedInspirationUrls} 
-                  onSave={handleSaveCurrentDesign} 
+                  onSave={handleSaveDesign}
+                  onUpdate={handleDesignUpdate}
                   onImageClick={setLightboxImage}
                 />
               )}

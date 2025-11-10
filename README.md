@@ -119,12 +119,12 @@ This prompt is sent to `imagen-4.0-generate-001` to produce a photorealistic roo
 3.  The room type MUST be: **${type}**.
 4.  The primary decor style MUST be: **${style}**.
 5.  Emulate this reference style: **${referenceStyle}**
-6.  The image should be a beautifully composed, well-lit, and realistic interior photograph. Pay attention to details like textures, shadows, and the way light interacts with surfaces.
+6.  The image must be a beautifully composed, well-lit, and hyperrealistic interior photograph. Pay meticulous attention to details like textures, soft shadows, and how light naturally interacts with surfaces. Edges between objects should be natural, not artificially sharp.
 
 **CRITICAL RULES & NEGATIVE PROMPTS:**
 *   **DO NOT RENDER ANY TEXT ON THE IMAGE.** No watermarks, labels, or text of any kind.
 *   **ABSOLUTELY NO:** people, pets, or clutter unless specifically requested. The focus is on the design.
-*   **AVOID:** Distorted perspectives, unrealistic proportions, or blurry results. The image must look like a real photograph from an architecture magazine.
+*   **AVOID:** Distorted perspectives, unrealistic proportions, blurry results, flat lighting, or hard, computer-generated edges. The image must look like a real photograph from an architecture magazine.
 ```
 
 ### 2. AI Interior Designer Analysis

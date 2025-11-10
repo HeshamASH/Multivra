@@ -1,4 +1,4 @@
-import { RoomType, DecorStyle, LightingType, InspirationTemplate, LightingTemplate } from './types';
+import { RoomType, DecorStyle, LightingType, InspirationTemplate, LightingTemplate, ImageQuality, ImageQualityOption } from './types';
 
 export const ROOM_TYPES: RoomType[] = [
   RoomType.LivingRoom,
@@ -67,4 +67,10 @@ export const INSPIRATION_TEMPLATES: InspirationTemplate[] = [
     decorStyle: DecorStyle.Industrial,
     lightingType: LightingType.DramaticAccent,
   },
+];
+
+export const IMAGE_QUALITY_OPTIONS: ImageQualityOption[] = [
+  { id: 'ultra', name: 'Ultra Quality', description: 'Highest detail, takes more time.' },
+  { id: 'balanced', name: 'Balanced', description: 'Good quality and speed.' },
+  { id: 'fastest', name: 'Fastest', description: 'Lower detail, quicker results.' },
 ];

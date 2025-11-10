@@ -7,30 +7,24 @@ import { ShareIcon } from './IconComponents';
 interface DesignOutputCardProps {
   design: GeneratedDesign;
   inspirationImages?: string[];
-  onSave: (editedDesign: GeneratedDesign) => void;
+  onSave: () => void;
+  onUpdate: (updatedDesign: GeneratedDesign) => void;
   onImageClick: (imageUrl: string) => void;
 }
 
-const DesignOutputCard: React.FC<DesignOutputCardProps> = ({ design, inspirationImages, onSave, onImageClick }) => {
+const DesignOutputCard: React.FC<DesignOutputCardProps> = ({ design, inspirationImages, onSave, onUpdate, onImageClick }) => {
   const [copied, setCopied] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const [isShareSupported, setIsShareSupported] = useState(false);
   
-  const [currentImage, setCurrentImage] = useState<string | null>(design.image);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isApplyingEdit, setIsApplyingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
-  const [currentRationale, setCurrentRationale] = useState<string>(design.rationale);
   const [isEditingText, setIsEditingText] = useState(false);
   const [textEditPrompt, setTextEditPrompt] = useState('');
   const [isApplyingTextEdit, setIsApplyingTextEdit] = useState(false);
   const [textEditError, setTextEditError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setCurrentImage(design.image);
-    setCurrentRationale(design.rationale);
-  }, [design]);
 
   useEffect(() => {
     if (navigator.share) {
@@ -39,20 +33,20 @@ const DesignOutputCard: React.FC<DesignOutputCardProps> = ({ design, inspiration
   }, []);
 
   const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(currentRationale).then(() => {
+    navigator.clipboard.writeText(design.rationale).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  }, [currentRationale]);
+  }, [design.rationale]);
   
   const handleApplyEdit = async (payload: EditPayload) => {
-    if (!currentImage) return;
+    if (!design.image) return;
 
     setIsApplyingEdit(true);
     setEditError(null);
     try {
-        const newImage = await editImage(currentImage, payload);
-        setCurrentImage(newImage);
+        const newImage = await editImage(design.image, payload);
+        onUpdate({ ...design, image: newImage });
         setIsEditModalOpen(false); // Close modal on success
     } catch(err) {
         const message = err instanceof Error ? err.message : 'Failed to apply image edit.';
@@ -69,8 +63,8 @@ const DesignOutputCard: React.FC<DesignOutputCardProps> = ({ design, inspiration
     setIsApplyingTextEdit(true);
     setTextEditError(null);
     try {
-      const newContent = await editText(currentRationale, textEditPrompt);
-      setCurrentRationale(newContent);
+      const newContent = await editText(design.rationale, textEditPrompt);
+      onUpdate({ ...design, rationale: newContent });
       setIsEditingText(false);
       setTextEditPrompt('');
     } catch (err) {
@@ -81,9 +75,9 @@ const DesignOutputCard: React.FC<DesignOutputCardProps> = ({ design, inspiration
   };
 
   const handleSaveImage = () => {
-    if (!currentImage) return;
+    if (!design.image) return;
     const link = document.createElement('a');
-    link.href = currentImage;
+    link.href = design.image;
     const fileName = `ai-moodboard-${Date.now()}.png`;
     link.download = fileName;
     document.body.appendChild(link);
@@ -92,10 +86,7 @@ const DesignOutputCard: React.FC<DesignOutputCardProps> = ({ design, inspiration
   };
 
   const handleSaveDesign = () => {
-    onSave({
-        image: currentImage,
-        rationale: currentRationale,
-    });
+    onSave();
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 2500);
   };
@@ -116,9 +107,9 @@ const DesignOutputCard: React.FC<DesignOutputCardProps> = ({ design, inspiration
   }
 
   const handleShare = async () => {
-    if (!navigator.share || !currentImage) return;
+    if (!navigator.share || !design.image) return;
 
-    const imageFile = dataURLtoFile(currentImage, `ai-design-${Date.now()}.png`);
+    const imageFile = dataURLtoFile(design.image, `ai-design-${Date.now()}.png`);
     if (!imageFile) {
         console.error("Could not convert data URL to file");
         return;
@@ -127,7 +118,7 @@ const DesignOutputCard: React.FC<DesignOutputCardProps> = ({ design, inspiration
     try {
       await navigator.share({
         title: 'My AI Interior Design',
-        text: `Check out this interior design concept I created!\n\nDesign Rationale:\n${currentRationale}`,
+        text: `Check out this interior design concept I created!\n\nDesign Rationale:\n${design.rationale}`,
         files: [imageFile],
       });
     } catch (error) {
@@ -153,19 +144,19 @@ const DesignOutputCard: React.FC<DesignOutputCardProps> = ({ design, inspiration
               {/* Main Image Column */}
               <div className="lg:col-span-3">
                   <h3 className="text-xl font-semibold text-gray-800 mb-3">Final Design</h3>
-                  {currentImage ? (
+                  {design.image ? (
                       <img 
-                        src={currentImage} 
+                        src={design.image} 
                         alt="Generated Design" 
                         className="w-full h-auto object-contain rounded-lg bg-gray-100 p-1 border border-gray-200 shadow-md zoom-on-hover clickable-image" 
-                        onClick={() => onImageClick(currentImage)}
+                        onClick={() => design.image && onImageClick(design.image)}
                       />
                   ) : (
                       <div className="w-full bg-gray-200 rounded-lg flex items-center justify-center aspect-video">
                           <p className="text-gray-500">Image failed to generate</p>
                       </div>
                   )}
-                   {currentImage && (
+                   {design.image && (
                       <div className="mt-4 flex items-center flex-wrap gap-x-4 gap-y-2">
                          <button onClick={() => setIsEditModalOpen(true)} className="text-sm text-blue-600 hover:text-blue-500 font-semibold flex items-center gap-1.5" disabled={isApplyingEdit}>
                              ✏️ Edit Image
@@ -203,7 +194,7 @@ const DesignOutputCard: React.FC<DesignOutputCardProps> = ({ design, inspiration
                     </div>
                     <div
                       className="text-sm text-gray-700 font-sans leading-relaxed p-4 bg-white rounded-lg border border-gray-200 prose prose-sm max-h-60 overflow-y-auto"
-                      dangerouslySetInnerHTML={renderMarkdown(currentRationale)}
+                      dangerouslySetInnerHTML={renderMarkdown(design.rationale)}
                     />
                     <div className="mt-3">
                       <button 
@@ -257,7 +248,7 @@ const DesignOutputCard: React.FC<DesignOutputCardProps> = ({ design, inspiration
            </div>
         </div>
       </div>
-      {currentImage && (
+      {design.image && (
         <AdvancedImageEditor
           isOpen={isEditModalOpen}
           onClose={() => {
@@ -265,7 +256,7 @@ const DesignOutputCard: React.FC<DesignOutputCardProps> = ({ design, inspiration
               setEditError(null);
           }}
           onSubmit={handleApplyEdit}
-          imageUrl={currentImage}
+          imageUrl={design.image}
           isApplyingEdit={isApplyingEdit}
           error={editError}
         />
