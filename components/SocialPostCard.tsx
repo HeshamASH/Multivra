@@ -9,11 +9,11 @@ interface DesignOutputCardProps {
   onSave: () => void;
   onUpdate: (updatedDesign: GeneratedDesign) => void;
   onImageClick: (imageUrl: string) => void;
+  isSaved: boolean;
 }
 
-const DesignOutputCard: React.FC<DesignOutputCardProps> = ({ design, onSave, onUpdate, onImageClick }) => {
+const DesignOutputCard: React.FC<DesignOutputCardProps> = ({ design, onSave, onUpdate, onImageClick, isSaved }) => {
   const [copied, setCopied] = useState(false);
-  const [justSaved, setJustSaved] = useState(false);
   const [isShareSupported, setIsShareSupported] = useState(false);
   
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -82,12 +82,6 @@ const DesignOutputCard: React.FC<DesignOutputCardProps> = ({ design, onSave, onU
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  };
-
-  const handleSaveDesign = () => {
-    onSave();
-    setJustSaved(true);
-    setTimeout(() => setJustSaved(false), 2500);
   };
   
   const dataURLtoFile = (dataurl: string, filename: string): File | null => {
@@ -164,11 +158,11 @@ const DesignOutputCard: React.FC<DesignOutputCardProps> = ({ design, onSave, onU
                              💾 Download Image
                          </button>
                          <button 
-                            onClick={handleSaveDesign} 
-                            className={`text-sm font-semibold flex items-center gap-1.5 transition-colors ${justSaved ? 'text-green-600' : 'text-indigo-600 hover:text-indigo-500'}`}
-                            disabled={justSaved}
+                            onClick={onSave} 
+                            className={`text-sm font-semibold flex items-center gap-1.5 transition-colors ${isSaved ? 'text-green-600' : 'text-indigo-600 hover:text-indigo-500'}`}
+                            disabled={isSaved}
                          >
-                             {justSaved ? '✅ Saved!' : '📂 Save Design'}
+                             {isSaved ? '✅ Saved!' : '📂 Save Design'}
                          </button>
                          {isShareSupported && (
                            <button onClick={handleShare} className="text-sm text-emerald-600 hover:text-emerald-500 font-semibold flex items-center gap-1.5">

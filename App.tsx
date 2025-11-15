@@ -61,12 +61,15 @@ const App: React.FC = () => {
   const [generatedDesign, setGeneratedDesign] = useState<GeneratedDesign | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<{title: string, message: string} | null>(null);
+  const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [useGrounding, setUseGrounding] = useState<boolean>(false);
   const [useAdvancedAnalysis, setUseAdvancedAnalysis] = useState<boolean>(false);
   
   const [savedDesigns, setSavedDesigns] = useState<SavedDesign[]>([]);
   const [isGalleryOpen, setIsGalleryOpen] = useState<boolean>(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [isCurrentDesignSaved, setIsCurrentDesignSaved] = useState<boolean>(false);
 
 
   useEffect(() => {
@@ -76,17 +79,22 @@ const App: React.FC = () => {
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!description.trim()) {
-      setError('Please enter a description for your design.');
+      setValidationMessage('Please enter a description for your design.');
+      setError(null);
+      setInfoMessage(null);
       return;
     }
 
     setIsLoading(true);
     setError(null);
+    setInfoMessage(null);
+    setValidationMessage(null);
     setGeneratedDesign(null);
 
     try {
       const design = await generateDesign(description, roomType, decorStyle, lightingType, useGrounding, useAdvancedAnalysis, referenceImages, imageQuality);
       setGeneratedDesign(design);
+      setIsCurrentDesignSaved(false);
 
     // FIX: Corrected the syntax of the catch block from `catch(err) => {` to `catch(err) {`.
     } catch (err) {
@@ -108,16 +116,34 @@ const App: React.FC = () => {
 
   const handleDesignUpdate = (updatedDesign: GeneratedDesign) => {
     setGeneratedDesign(updatedDesign);
+    setIsCurrentDesignSaved(false);
   };
 
   const handleSaveDesign = () => {
     if (!generatedDesign || !generatedDesign.image) return;
-    const newDesigns = saveDesign({
-        rationale: generatedDesign.rationale,
-        image: generatedDesign.image,
-        inspirationImages: generatedDesign.inspirationImages,
-    });
-    setSavedDesigns(newDesigns);
+    try {
+      const newDesigns = saveDesign({
+          rationale: generatedDesign.rationale,
+          image: generatedDesign.image,
+          inspirationImages: generatedDesign.inspirationImages,
+      });
+      setSavedDesigns(newDesigns);
+      setIsCurrentDesignSaved(true);
+      setError(null);
+      setInfoMessage(null);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred while saving.';
+      if (errorMessage.startsWith('STORAGE_FULL::')) {
+          setInfoMessage({
+              title: "Browser's Storage Is Full",
+              message: errorMessage.replace('STORAGE_FULL::', '')
+          });
+          setError(null);
+      } else {
+          setError(errorMessage);
+          setInfoMessage(null);
+      }
+    }
   };
 
   const handleLoadDesign = (design: SavedDesign) => {
@@ -127,6 +153,7 @@ const App: React.FC = () => {
         inspirationImages: design.inspirationImages 
       });
       setIsGalleryOpen(false);
+      setIsCurrentDesignSaved(true);
       // Use a timeout to ensure the DOM has updated before scrolling
       setTimeout(() => {
         const resultElement = document.getElementById('result-card');
@@ -135,8 +162,13 @@ const App: React.FC = () => {
   };
 
   const handleDeleteDesign = (id: string) => {
+    try {
       const newDesigns = deleteDesign(id);
       setSavedDesigns(newDesigns);
+      setInfoMessage(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete design.');
+    }
   };
 
   return (
@@ -293,8 +325,19 @@ const App: React.FC = () => {
 
             <div id="result-card" className="mt-16">
               {isLoading && <Loader subMessage={useAdvancedAnalysis ? 'The AI Interior Designer is reviewing your room for quality and accuracy. This may take longer.' : undefined} />}
+              {infoMessage && (
+                <div className="text-center p-4 mb-4 bg-gray-100 border border-gray-300 text-gray-700 rounded-lg max-w-2xl mx-auto">
+                  <p className="font-bold">{infoMessage.title}</p>
+                  <p>{infoMessage.message}</p>
+                </div>
+              )}
+              {validationMessage && (
+                <div className="text-center p-4 mb-4 bg-gray-100 border border-gray-300 text-gray-700 rounded-lg max-w-2xl mx-auto">
+                  <p>{validationMessage}</p>
+                </div>
+              )}
               {error && (
-                <div className="text-center p-4 bg-red-100 border border-red-300 text-red-800 rounded-lg max-w-2xl mx-auto">
+                <div className="text-center p-4 mb-4 bg-red-100 border border-red-300 text-red-800 rounded-lg max-w-2xl mx-auto">
                   <p className="font-bold">An Error Occurred</p>
                   <p>{error}</p>
                 </div>
@@ -305,6 +348,7 @@ const App: React.FC = () => {
                   onSave={handleSaveDesign}
                   onUpdate={handleDesignUpdate}
                   onImageClick={setLightboxImage}
+                  isSaved={isCurrentDesignSaved}
                 />
               )}
             </div>

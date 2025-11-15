@@ -30,7 +30,16 @@ export const saveDesign = (designToSave: Omit<SavedDesign, 'id' | 'timestamp'>):
     };
     // Add the new design to the beginning of the array
     const updatedDesigns = [newDesign, ...designs];
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedDesigns));
+    try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedDesigns));
+    } catch (error) {
+        console.error("Failed to save design to local storage:", error);
+        // Check for QuotaExceededError (the name and code can vary between browsers)
+        if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.code === 22)) {
+            throw new Error("STORAGE_FULL::Could not save design. Please delete some old designs to make space.");
+        }
+        throw new Error("An unexpected error occurred while saving your design.");
+    }
     return updatedDesigns;
 };
 
@@ -42,6 +51,11 @@ export const saveDesign = (designToSave: Omit<SavedDesign, 'id' | 'timestamp'>):
 export const deleteDesign = (id: string): SavedDesign[] => {
     const designs = getSavedDesigns();
     const updatedDesigns = designs.filter(d => d.id !== id);
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedDesigns));
+    try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedDesigns));
+    } catch (error) {
+        console.error("Failed to update local storage after deletion:", error);
+        throw new Error("Could not update saved designs after deletion.");
+    }
     return updatedDesigns;
 };
