@@ -48,46 +48,49 @@ This application transforms your text-based ideas into professional, photorealis
 
 This application uses a sophisticated multi-agent workflow to transform your description into a polished room design.
 
+```mermaid
+graph TD
+    A[User Input] --> B(Orchestrator)
+    
+    subgraph "Prompt Construction"
+        B -- Has ref images --> C(<b>Agent 1: Style Analyst</b><br>gemini-2.5-flash)
+        C --> D[Style Guide] --> E(Final Image Prompt)
+        
+        B --> F(<b>Agent 2: Design Writer</b><br>gemini-2.5-flash)
+        F -- Optional Google Search --> G[Design Rationale] --> E
+    end
+
+    subgraph "Image Generation & Refinement"
+        E --> H(<b>Agent 3: Visualizer</b><br>Imagen 4.0 Series)
+        H --> I[Base Design Image]
+        I --> J{AI Review Enabled?}
+        J -- No --> K([Final Design])
+        
+        J -- Yes --> L(<b>Agent 4: AI Designer</b><br>gemini-2.5-pro)
+        L --> M{Critique:<br>"PERFECT" or "Edit Prompt"}
+        M -- "PERFECT" --> K
+        M -- "Edit Prompt" --> N(<b>Agent 5: Image Editor</b><br>gemini-2.5-flash-image)
+        N --> O[Refined Design] --> K
+    end
+
+    subgraph "User Interaction"
+        K --> P(Display to User)
+        P --> Q{User Edits Rationale?}
+        Q -- Yes --> R(<b>Agent 6: Text Editor</b><br>gemini-2.5-flash)
+        R --> S([Updated Rationale])
+
+        P --> T{User Edits Design?}
+        T -- Yes --> N
+        N --> U([Updated Design])
+    end
+
+    style C fill:#e3f2fd,stroke:#333,stroke-width:2px
+    style F fill:#e3f2fd,stroke:#333,stroke-width:2px
+    style H fill:#e8eaf6,stroke:#333,stroke-width:2px
+    style L fill:#fff3e0,stroke:#333,stroke-width:2px
+    style N fill:#e0f2f1,stroke:#333,stroke-width:2px
+    style R fill:#f3e5f5,stroke:#333,stroke-width:2px
 ```
-[User Input: Description, Room, Style, Options, Inspiration Images]
-           |
-           v
-[App Orchestrator]
-    |
-    +-----> [IF Inspiration Images exist] -> [Agent 1: Style Analyst (gemini-2.5-flash)]
-    |                                            |
-    |                                            v
-    |                                            Analyzes images -> Outputs [Style Description]
-    |                                                                       |
-    |                                                                       v
-    +--------------------------------> [Agent 2: Design Writer (gemini-2.5-flash)] ---------> [Design Rationale]
-    |                                    (Optionally uses Google Search)      |
-    |                                                                         |
-    |                                                                         v
-    +--------------------------------> [Constructs Final Image Prompt] <-------+
-                                                   |
-                                                   v
-          [Agent 3: Visualizer (Imagen 4.0 Series)] -> Creates [Base Design Image]
-                                                   |
-    +--(If 'AI Review' is OFF)-----------+------------------------------------------> [Final Design]
-    |
-    +--(If 'AI Review' is ON) --> [Agent 4: Interior Designer (gemini-2.5-pro)]
-                                                     |
-                                                     v
-                                                     Analyzes [Base Design] -> Outputs ("PERFECT" or "Edit Prompt")
-                                                     |
-                                                     +-- (If "PERFECT") ---------------------> [Final Design]
-                                                     |
-                                                     +-- (If "Edit Prompt") --> [Agent 5: Image Editor (gemini-2.5-flash-image)] -> [Refined Design] -> [Final Design]
-
-
-[Final Output Displayed to User]
-    |
-    +-----> [User Edits Rationale] -> [Agent 6: Text Editor (gemini-2.5-flash)] -> [Updated Rationale]
-    |
-    +-----> [User Edits Design] ----> [Agent 5: Image Editor (gemini-2.5-flash-image)] -> [Updated Design]
-```
-
 ---
 
 ## 🛠️ Technology Stack
